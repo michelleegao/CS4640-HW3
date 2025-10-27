@@ -27,7 +27,6 @@
         <p><strong>Player:</strong> <?= htmlspecialchars($user['name']) ?> (<?= htmlspecialchars($user['email']) ?>)</p>
         <p><strong>Target word:</strong> <?= htmlspecialchars(strtoupper($last['target'])) ?></p>
         <p><strong>Final score:</strong> <?= (int)$last['score'] ?></p>
-        <p><strong>Invalid guesses:</strong> <?= (int)$last['invalidCt'] ?></p>
         <p><strong>Status:</strong> <?= htmlspecialchars($last['status']) ?></p>
         <p><strong>Valid words you found:</strong></p>
         <ul>
