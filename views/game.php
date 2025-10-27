@@ -68,7 +68,7 @@ $user = $_SESSION['user'];
     </nav>
 </header>
 
-<h2>Score: <?= (int)$score ?></h2>
+<h2>Score: <?= $_SESSION['game']['score'] ?></h2>
 <div class="letters"><?= htmlspecialchars(implode(' ', array_map('strtoupper', $letters))) ?></div>
 
 <?php if (!empty($message)): ?>
