@@ -25,18 +25,16 @@
     <h1>Game Over</h1>
     <div class="panel">
         <p><strong>Player:</strong> <?= htmlspecialchars($user['name']) ?> (<?= htmlspecialchars($user['email']) ?>)</p>
-        <p><strong>Target word:</strong> <?= htmlspecialchars(strtoupper($last['target'])) ?></p>
-        <p><strong>Final score:</strong> <?= (int)$last['score'] ?></p>
-        <p><strong>Invalid guesses:</strong> <?= (int)$last['invalidCt'] ?></p>
-        <p><strong>Status:</strong> <?= htmlspecialchars($last['status']) ?></p>
+        <p><strong>Final score:</strong> <?= (int)$_SESSION['game']['score'] ?></p>
+        <p><strong>Status:</strong> <?= htmlspecialchars($_SESSION['game']['status']) ?></p>
         <p><strong>Valid words you found:</strong></p>
         <ul>
-        <?php foreach ($last['valid'] as $w): ?>
-            <li><?= htmlspecialchars($w) ?></li>
-        <?php endforeach; ?>
-        <?php if (empty($last['valid'])): ?>
-            <li><em>None</em></li>
-        <?php endif; ?>
+            <?php foreach ($_SESSION['game']['valid'] as $w): ?>
+                <li><?= htmlspecialchars($w) ?></li>
+            <?php endforeach; ?>
+            <?php if (empty($last['valid'])): ?>
+                <li><em>None</em></li>
+            <?php endif; ?>
         </ul>
     </div>
 

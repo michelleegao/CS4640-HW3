@@ -86,16 +86,19 @@ $user = $_SESSION['user'];
     <button type="submit">Submit Guess</button>
 </form>
 
+<form method="post" action="index.php?command=shuffle" style="display:inline">
+    <button type="submit">Re-shuffle</button>
+</form>
+
+<a href="index.php?command=quit">Quit (end session)</a>
+
 <div class="row" style="margin-top:1rem;">
     <div class="panel">
-        <strong>Valid words found:</strong>
+        <strong>Valid words found: (<?= count($_SESSION['game']['guessed']) ?>)</strong>
         <ul>
-        <?php foreach ($valid as $w): ?>
-            <li><?= htmlspecialchars($w) ?></li>
-        <?php endforeach; ?>
-        <?php if (empty($valid)): ?>
-            <li><em>None yet</em></li>
-        <?php endif; ?>
+            <?php foreach($_SESSION['game']['guessed'] as $w): ?>
+                <li><?= htmlspecialchars($w) ?></li>
+                <?php endforeach; ?>
         </ul>
     </div>
 

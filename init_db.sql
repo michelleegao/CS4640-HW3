@@ -6,7 +6,7 @@ CREATE TABLE hw3_users (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     email VARCHAR(255) NOT NULL,
-    password VARCHAR(255) NOT NULL
+    password_hash VARCHAR(255) NOT NULL
 );
 
 CREATE TABLE hw3_words ( -- stores 7-letter target words that have already been played
