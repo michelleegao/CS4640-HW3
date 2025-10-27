@@ -11,7 +11,7 @@ class AnagramsGameController {
         $this->wordBankPath = __DIR__ . '/word_bank.json';
     }
 
-    public function handleRequest() {
+    public function run() {
         $cmd = $_GET['command'] ?? 'welcome';
 
         // simple routing
