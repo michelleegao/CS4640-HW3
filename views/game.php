@@ -62,7 +62,6 @@ $user = $_SESSION['user'];
         <strong><?= htmlspecialchars($user['name']) ?></strong> (<?= htmlspecialchars($user['email']) ?>)
     </div>
     <nav>
-        <a href="index.php?command=reshuffle">Reshuffle</a> |
         <a href="index.php?command=quit">Quit Game</a> |
         <a href="index.php?command=logout">Logout</a>
     </nav>
@@ -104,10 +103,10 @@ $user = $_SESSION['user'];
 
     <div class="panel stats">
         <strong>Your stats</strong>
-        <small>Games played: <?= (int)$stats['games_played'] ?></small>
-        <small>Win %: <?= number_format((float)$stats['win_pct']*100, 0) ?>%</small>
-        <small>Highest score: <?= (int)$stats['max_score'] ?></small>
-        <small>Average score: <?= number_format((float)$stats['avg_score'], 1) ?></small>
+        <small>Games played: <?= (int)$stats['gamesPlayed'] ?></small>
+        <small>Win %: <?= number_format((float)$stats['winPct']*100, 0) ?>%</small>
+        <small>Highest score: <?= (int)$stats['highScore'] ?></small>
+        <small>Average score: <?= number_format((float)$stats['avgScore'], 1) ?></small>
     </div>
 </div>
 

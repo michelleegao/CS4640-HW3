@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/Database.php';
+require_once __DIR__ . '/Config.php';
 
 class AnagramsGameController {
     private $viewsPath;
@@ -7,14 +9,13 @@ class AnagramsGameController {
 
     public function __construct() {
         $this->viewsPath = __DIR__ . '/../views/';
-        $this->words7Path = __DIR__ . '/words7.txt';
-        $this->wordBankPath = __DIR__ . '/word_bank.json';
+        $this->words7Path = Config::wordsPath();
+        $this->wordBankPath = Config::bankPath();
     }
 
     public function run() {
         $cmd = $_GET['command'] ?? 'welcome';
 
-        // simple routing
         switch ($cmd) {
             case 'login':
                 $this->doLogin();
@@ -52,6 +53,7 @@ class AnagramsGameController {
             return;
         }
 
+        // Define letters for display
         if (isset($_SESSION['game']['shuffled'])) {
             $letters = str_split($_SESSION['game']['shuffled']);
         } elseif (isset($_SESSION['game']['target'])) {
@@ -59,6 +61,10 @@ class AnagramsGameController {
         } else {
             $letters = [];
         }
+
+        // Fetch user stats
+        $userId = $_SESSION['user']['id'];
+        $stats = $this->getUserStats($userId);
 
         include $this->viewsPath . 'game.php';
     }
@@ -69,11 +75,11 @@ class AnagramsGameController {
 
     /* ---------- Auth / Session ---------- */
     private function doLogin() {
-        // use POST to avoid sending passwords in URL
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             $this->showWelcome();
             return;
         }
+
         $name = trim($_POST['name'] ?? '');
         $email = trim($_POST['email'] ?? '');
         $password = $_POST['password'] ?? '';
@@ -83,28 +89,38 @@ class AnagramsGameController {
             return;
         }
 
-        if (!isset($_SESSION['users'])) $_SESSION['users'] = [];
+        // Check if user exists
+        $user = Database::one("SELECT * FROM hw3_users WHERE email = :email", [":email" => $email]);
 
-        // check if user exists
-        foreach ($_SESSION['users'] as $u) {
-            if (strtolower($u['email']) === strtolower($email)) {
-                // verify password
-                if (password_verify($password, $u['password_hash'])) {
-                    $_SESSION['user'] = ['name' => $u['name'], 'email' => $u['email']];
-                    $this->startNewGame(); // login successful
-                    return;
-                } else {
-                    $this->showWelcome('Wrong password for that email.');
-                    return;
-                }
+        if ($user) {
+            if (!password_verify($password, $user['password_hash'])) {
+                $this->showWelcome('Wrong password for that email.');
+                return;
             }
+
+            $_SESSION['user'] = [
+                'id' => $user['id'],
+                'name' => $user['name'],
+                'email' => $user['email']
+            ];
+            $this->startNewGame();
+            return;
         }
 
-        // new user
-        $passHash = password_hash($password, PASSWORD_DEFAULT);
-        $newUser = ['name' => $name, 'email' => $email, 'password_hash' => $passHash];
-        $_SESSION['users'][] = $newUser;
-        $_SESSION['user'] = ['name' => $name, 'email' => $email];
+        // New user
+        $hash = password_hash($password, PASSWORD_DEFAULT);
+        $id = Database::insertReturningId(
+            "INSERT INTO hw3_users (name, email, password_hash)
+             VALUES (:n, :e, :p)
+             RETURNING id",
+            [":n" => $name, ":e" => $email, ":p" => $hash]
+        );
+
+        $_SESSION['user'] = [
+            'id' => $id,
+            'name' => $name,
+            'email' => $email
+        ];
 
         $this->startNewGame();
     }
@@ -116,35 +132,68 @@ class AnagramsGameController {
             return;
         }
 
-        // pick random 7-letter word not already played by this user (dev: just random)
         $all = $this->loadWords7();
         if (!$all) {
             $this->showWelcome('Word list missing.');
             return;
         }
 
-        // pick a target word
-        $target = $all[array_rand($all)];
+        $userId = $_SESSION['user']['id'];
 
-        // create game session state
+        // Get all words the user has already played
+        $playedRows = Database::all(
+            "SELECT target_word FROM hw3_games WHERE user_id = :u",
+            [":u" => $userId]
+        );
+        $played = array_map(fn($r) => strtolower(trim($r['target_word'])), $playedRows);
+
+        // Filter out already played words
+        $available = array_diff($all, $played);
+
+        if (empty($available)) {
+            $this->showGameOver("You've played all available words!");
+            return;
+        }
+
+        // Pick a new random target word
+        $target = $available[array_rand($available)];
+
+        // Ensure word exists in hw3_words
+        Database::execStmt(
+            "INSERT INTO hw3_words (word) VALUES (:w) ON CONFLICT DO NOTHING",
+            [":w" => strtolower(trim($target))]
+        );
+
+        $gameId = Database::insertReturningId(
+            "INSERT INTO hw3_games (user_id, target_word, score, status)
+            VALUES (:u, :w, 0, 'in_progress')
+            RETURNING id",
+            [":u" => $userId, ":w" => strtolower(trim($target))]
+        );
+
+        // Store session data
         $_SESSION['game'] = [
+            'id' => $gameId,
             'target' => $target,
             'shuffled' => $this->shuffleString($target),
             'score' => 0,
-            'guessed' => [],       // valid guessed words (unique)
+            'guessed' => [],
             'invalid_count' => 0,
-            'all_guesses' => []    // record each guess and whether valid
+            'all_guesses' => []
         ];
 
         $this->showGame();
     }
 
+
     private function quitGame() {
-        // mark game as lost if it exists
-        if (isset($_SESSION['game'])) {
+        if (isset($_SESSION['game']['id'])) {
+            Database::execStmt(
+                "UPDATE hw3_games SET status = 'lost', score = :s WHERE id = :id",
+                [":s" => $_SESSION['game']['score'] ?? 0, ":id" => $_SESSION['game']['id']]
+            );
         }
         session_unset();
-        // show welcome
         $this->showWelcome('Session ended. You may log in again.');
     }
 
@@ -158,6 +207,7 @@ class AnagramsGameController {
             $this->showGame();
             return;
         }
+
         $guess = trim($_POST['guess'] ?? '');
         if ($guess === '') {
             $this->showGame();
@@ -167,7 +217,7 @@ class AnagramsGameController {
         $guessLower = strtolower($guess);
         $target = strtolower($_SESSION['game']['target']);
 
-        // check letters allowed
+        // Check letters allowed
         if (!$this->lettersAllowed($guessLower, $target)) {
             $_SESSION['game']['invalid_count']++;
             $_SESSION['game']['all_guesses'][] = ['word' => $guessLower, 'valid' => false, 'reason' => 'disallowed_letters'];
@@ -175,38 +225,42 @@ class AnagramsGameController {
             return;
         }
 
-        // check against short-word bank
+        // Check against word bank
         $wordBank = $this->loadWordBank();
         if (!in_array($guessLower, $wordBank)) {
             $_SESSION['game']['all_guesses'][] = ['word' => $guessLower, 'valid' => false, 'reason' => 'not_in_word_bank'];
+            $_SESSION['game']['score'] -= 1;
             $this->showGame();
             return;
         }
 
-        // valid word: check not previously guessed
+        // Valid but repeated
         if (in_array($guessLower, $_SESSION['game']['guessed'])) {
-            // already guessed — no scoring change
             $_SESSION['game']['all_guesses'][] = ['word' => $guessLower, 'valid' => false, 'reason' => 'already_guessed'];
             $this->showGame();
             return;
         }
 
-        // valid and new
+        // Valid and new
         $len = strlen($guessLower);
         $pts = $this->pointsForLength($len);
         $_SESSION['game']['score'] += $pts;
         $_SESSION['game']['guessed'][] = $guessLower;
         $_SESSION['game']['all_guesses'][] = ['word' => $guessLower, 'valid' => true, 'points' => $pts];
 
-        // if full 7-letter word guessed, game over (win)
-        if ($len === 7 && $guessLower === $target) {
-            // For DB: record the completed game (won=true)
+        // If 7-letter correct word guessed, mark win
+        if ($len === 7 && trim(strtolower($guessLower)) === trim(strtolower($_SESSION['game']['target']))) {
             $_SESSION['game']['won'] = true;
+
+            Database::execStmt(
+                "UPDATE hw3_games SET status = 'won', score = :s WHERE id = :id",
+                [":s" => $_SESSION['game']['score'], ":id" => $_SESSION['game']['id']]
+            );
+
             $this->showGameOver();
             return;
         }
 
-        // else stay on game page
         $this->showGame();
     }
 
@@ -221,13 +275,11 @@ class AnagramsGameController {
     }
 
     /* ---------- Helpers ---------- */
-
     private function loadWords7() {
         if (!file_exists($this->words7Path)) return [];
         $lines = file($this->words7Path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         $clean = array_map('trim', $lines);
-        // ensure lower-case and 7-letter
-        $clean = array_filter($clean, function($w){ return strlen(trim($w))===7; });
+        $clean = array_filter($clean, fn($w) => strlen(trim($w)) === 7);
         return array_values(array_map('strtolower', $clean));
     }
 
@@ -241,9 +293,7 @@ class AnagramsGameController {
         foreach ($arr as $subArr) {
             if (is_array($subArr)) {
                 foreach ($subArr as $word) {
-                    if (is_string($word)) {
-                        $flat[] = strtolower($word);
-                    }
+                    if (is_string($word)) $flat[] = strtolower($word);
                 }
             }
         }
@@ -251,11 +301,9 @@ class AnagramsGameController {
     }
 
     private function lettersAllowed($guess, $target) {
-        // ensure guess can be made from target characters (counts matter)
         $g = count_chars($guess, 1);
         $t = count_chars($target, 1);
         foreach ($g as $ascii => $count) {
-            $char = chr($ascii);
             if (!isset($t[$ascii]) || $count > $t[$ascii]) return false;
         }
         return true;
@@ -279,4 +327,41 @@ class AnagramsGameController {
         shuffle($a);
         return implode('', $a);
     }
+
+    private function getUserStats($userId) {
+        // Total games played
+        $gamesPlayed = Database::one(
+            "SELECT COUNT(*) AS total FROM hw3_games WHERE user_id = :u",
+            [":u" => $userId]
+        )['total'] ?? 0;
+
+        // Games won
+        $gamesWon = Database::one(
+            "SELECT COUNT(*) AS won FROM hw3_games WHERE user_id = :u AND status = 'won'",
+            [":u" => $userId]
+        )['won'] ?? 0;
+
+        // Highest score
+        $highScore = Database::one(
+            "SELECT COALESCE(MAX(score), 0) AS max_score FROM hw3_games WHERE user_id = :u",
+            [":u" => $userId]
+        )['max_score'] ?? 0;
+
+        // Average score
+        $avgScore = Database::one(
+            "SELECT COALESCE(AVG(score), 0) AS avg_score FROM hw3_games WHERE user_id = :u",
+            [":u" => $userId]
+        )['avg_score'] ?? 0;
+
+        // Win percentage
+        $winPct = $gamesPlayed > 0 ? round(($gamesWon / $gamesPlayed) * 100, 1) : 0;
+
+        return [
+            'gamesPlayed' => $gamesPlayed,
+            'winPct' => $winPct,
+            'highScore' => $highScore,
+            'avgScore' => $avgScore
+        ];
+    }
+
 }
