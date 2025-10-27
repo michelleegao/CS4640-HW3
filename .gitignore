@@ -1,0 +1,4 @@
+# hiding our passwords
+src/Config.php
+src/Config.local.php
+.env
