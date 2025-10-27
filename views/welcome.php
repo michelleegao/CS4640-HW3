@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Anagrams Welcome/title>
+    <title>Anagrams Welcome</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body{
