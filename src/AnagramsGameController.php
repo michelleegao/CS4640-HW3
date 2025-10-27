@@ -51,6 +51,15 @@ class AnagramsGameController {
             $this->showWelcome('Please log in first.');
             return;
         }
+
+        if (isset($_SESSION['game']['shuffled'])) {
+            $letters = str_split($_SESSION['game']['shuffled']);
+        } elseif (isset($_SESSION['game']['target'])) {
+            $letters = str_split($_SESSION['game']['target']);
+        } else {
+            $letters = [];
+        }
+
         include $this->viewsPath . 'game.php';
     }
 
@@ -170,8 +179,6 @@ class AnagramsGameController {
         $wordBank = $this->loadWordBank();
         if (!in_array($guessLower, $wordBank)) {
             $_SESSION['game']['all_guesses'][] = ['word' => $guessLower, 'valid' => false, 'reason' => 'not_in_word_bank'];
-            // optional penalty: -1
-            $_SESSION['game']['score'] -= 1;
             $this->showGame();
             return;
         }
@@ -229,8 +236,18 @@ class AnagramsGameController {
         $json = file_get_contents($this->wordBankPath);
         $arr = json_decode($json, true);
         if (!is_array($arr)) return [];
-        // normalize to lowercase
-        return array_map('strtolower', $arr);
+
+        $flat = [];
+        foreach ($arr as $subArr) {
+            if (is_array($subArr)) {
+                foreach ($subArr as $word) {
+                    if (is_string($word)) {
+                        $flat[] = strtolower($word);
+                    }
+                }
+            }
+        }
+        return $flat;
     }
 
     private function lettersAllowed($guess, $target) {
