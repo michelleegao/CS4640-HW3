@@ -3,7 +3,7 @@
 // Authors: Michelle Gao (bnm5cm) and Henna Panjshiri (kew4bd)
 // Published links:
 // https://cs4640.cs.virginia.edu/bnm5cm/hw3
-// https://cs4640.cs.virginia.edu/kew4bd/hw3/index.php
+// https://cs4640.cs.virginia.edu/kew4bd/hw3
 
 session_start();
 
