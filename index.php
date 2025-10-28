@@ -1,5 +1,10 @@
 <?php
 
+// Authors: Michelle Gao (bnm5cm) and Henna Panjshiri (kew4bd)
+// Published links:
+// https://cs4640.cs.virginia.edu/bnm5cm/CS4640-HW3
+// https://cs4640.cs.virginia.edu/kew4bd/hw3/index.php
+
 session_start();
 
 ini_set('display_errors', 1);
