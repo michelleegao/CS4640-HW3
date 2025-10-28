@@ -70,6 +70,15 @@ class AnagramsGameController {
     }
 
     private function showGameOver($message = '') {
+        if (!isset($_SESSION['user'])) {
+            $this->showWelcome('Please log in first.');
+            return;
+        }
+
+        $userId = $_SESSION['user']['id'];
+        $stats = $this->getUserStats($userId); // refresh stats
+        $game = $_SESSION['game'] ?? [];
+
         include $this->viewsPath . 'gameover.php';
     }
 
@@ -256,7 +265,6 @@ class AnagramsGameController {
 
     $this->showGame();
 }
-
 
     /* ---------- Helpers ---------- */
     private function loadWords7() {
