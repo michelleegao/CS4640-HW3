@@ -57,7 +57,7 @@
         if (!empty($validGuesses)): ?>
             <ul>
                 <?php foreach ($validGuesses as $g): ?>
-                    <li><?= htmlspecialchars($g['word']) ?> (+<?= htmlspecialchars($g['points'] ?? 0) ?>)</li>
+                    <li><?= htmlspecialchars($g['word']) ?></li>
                 <?php endforeach; ?>
             </ul>
         <?php else: ?>

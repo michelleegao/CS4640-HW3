@@ -208,59 +208,60 @@ class AnagramsGameController {
 
     /* ---------- Guess handling ---------- */
     private function handleGuess() {
-    if (!isset($_SESSION['game'])) { $this->showWelcome('No active game. Start a new one.'); return; }
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') { $this->showGame(); return; }
+        if (!isset($_SESSION['game'])) { $this->showWelcome('No active game. Start a new one.'); return; }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') { $this->showGame(); return; }
 
-    $guess = trim($_POST['guess'] ?? '');
-    if ($guess === '') { $this->showGame(); return; }
+        $guess = trim($_POST['guess'] ?? '');
+        if ($guess === '') { $this->showGame(); return; }
 
-    $guessLower = strtolower($guess);
-    $targetLower = strtolower($_SESSION['game']['target']);
+        $guessLower = strtolower($guess);
+        $targetLower = strtolower($_SESSION['game']['target']);
 
-    // letters must come from target
-    if (!$this->lettersAllowed($guessLower, $targetLower)) {
-        $_SESSION['game']['invalid_count']++;
-        $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>false,'reason'=>'disallowed_letters'];
-        $this->showGame(); return;
-    }
+        // letters must come from target
+        if (!$this->lettersAllowed($guessLower, $targetLower)) {
+            $_SESSION['game']['invalid_count']++;
+            $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>false,'reason'=>'disallowed_letters'];
+            $this->showGame(); return;
+        }
 
-    // handle exact 7-letter target FIRST (no bank check needed)
-    if (strlen($guessLower) === 7 && $guessLower === $targetLower) {
+        // handle exact 7-letter target FIRST (no bank check needed)
+        if (strlen($guessLower) === 7 && $guessLower === $targetLower) {
+            $_SESSION['game']['guessed'][] = $guessLower;
+            $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>true,'points'=>0];
+            $_SESSION['game']['won'] = true;
+            $_SESSION['game']['score'] += 50;
+
+            Database::execStmt(
+                "UPDATE hw3_games SET status = 'won', score = :s WHERE id = :id",
+                [":s" => $_SESSION['game']['score'], ":id" => $_SESSION['game']['id']]
+            );
+
+            $this->showGameOver();
+            return;
+        }
+
+        // for shorter words, require presence in the word bank
+        $wordBank = $this->loadWordBank();
+        if (!in_array($guessLower, $wordBank, true)) {
+            $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>false,'reason'=>'not_in_word_bank'];
+            $_SESSION['game']['score'] -= 1;
+            $this->showGame(); return;
+        }
+
+        // duplicate check
+        if (in_array($guessLower, $_SESSION['game']['guessed'], true)) {
+            $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>false,'reason'=>'already_guessed'];
+            $this->showGame(); return;
+        }
+
+        // score & record for short valid words
+        $len = strlen($guessLower);
+        $pts = $this->pointsForLength($len);
+        $_SESSION['game']['score'] += $pts;
         $_SESSION['game']['guessed'][] = $guessLower;
-        $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>true,'points'=>0];
-        $_SESSION['game']['won'] = true;
+        $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>true,'points'=>$pts];
 
-        Database::execStmt(
-            "UPDATE hw3_games SET status = 'won', score = :s WHERE id = :id",
-            [":s" => $_SESSION['game']['score'], ":id" => $_SESSION['game']['id']]
-        );
-
-        $this->showGameOver();
-        return;
-    }
-
-    // for shorter words, require presence in the word bank
-    $wordBank = $this->loadWordBank();
-    if (!in_array($guessLower, $wordBank, true)) {
-        $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>false,'reason'=>'not_in_word_bank'];
-        $_SESSION['game']['score'] -= 1;
-        $this->showGame(); return;
-    }
-
-    // duplicate check
-    if (in_array($guessLower, $_SESSION['game']['guessed'], true)) {
-        $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>false,'reason'=>'already_guessed'];
-        $this->showGame(); return;
-    }
-
-    // score & record for short valid words
-    $len = strlen($guessLower);
-    $pts = $this->pointsForLength($len);
-    $_SESSION['game']['score'] += $pts;
-    $_SESSION['game']['guessed'][] = $guessLower;
-    $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>true,'points'=>$pts];
-
-    $this->showGame();
+        $this->showGame();
 }
 
     /* ---------- Helpers ---------- */
