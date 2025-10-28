@@ -1,5 +1,4 @@
 <?php
-// Game Over Screen
 ?>
 <!DOCTYPE html>
 <html lang="en">
