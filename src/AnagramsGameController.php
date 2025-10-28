@@ -53,7 +53,7 @@ class AnagramsGameController {
             return;
         }
 
-        // Define letters for display
+        // define letters for display
         if (isset($_SESSION['game']['shuffled'])) {
             $letters = str_split($_SESSION['game']['shuffled']);
         } elseif (isset($_SESSION['game']['target'])) {
@@ -62,7 +62,7 @@ class AnagramsGameController {
             $letters = [];
         }
 
-        // Fetch user stats
+        // fetch user stats
         $userId = $_SESSION['user']['id'];
         $stats = $this->getUserStats($userId);
 
@@ -70,6 +70,15 @@ class AnagramsGameController {
     }
 
     private function showGameOver($message = '') {
+        if (!isset($_SESSION['user'])) {
+            $this->showWelcome('Please log in first.');
+            return;
+        }
+
+        $userId = $_SESSION['user']['id'];
+        $stats = $this->getUserStats($userId); // refresh stats
+        $game = $_SESSION['game'] ?? [];
+
         include $this->viewsPath . 'gameover.php';
     }
 
@@ -89,7 +98,7 @@ class AnagramsGameController {
             return;
         }
 
-        // Check if user exists
+        // check if user exists
         $user = Database::one("SELECT * FROM hw3_users WHERE email = :email", [":email" => $email]);
 
         if ($user) {
@@ -107,7 +116,7 @@ class AnagramsGameController {
             return;
         }
 
-        // New user
+        // new user
         $hash = password_hash($password, PASSWORD_DEFAULT);
         $id = Database::insertReturningId(
             "INSERT INTO hw3_users (name, email, password_hash)
@@ -140,14 +149,14 @@ class AnagramsGameController {
 
         $userId = $_SESSION['user']['id'];
 
-        // Get all words the user has already played
+        // get all words the user has already played
         $playedRows = Database::all(
             "SELECT target_word FROM hw3_games WHERE user_id = :u",
             [":u" => $userId]
         );
         $played = array_map(fn($r) => strtolower(trim($r['target_word'])), $playedRows);
 
-        // Filter out already played words
+        // filter out already played words
         $available = array_diff($all, $played);
 
         if (empty($available)) {
@@ -155,10 +164,10 @@ class AnagramsGameController {
             return;
         }
 
-        // Pick a new random target word
+        // pick a new random target word
         $target = $available[array_rand($available)];
 
-        // Ensure word exists in hw3_words
+        // ensure word exists in hw3_words
         Database::execStmt(
             "INSERT INTO hw3_words (word) VALUES (:w) ON CONFLICT DO NOTHING",
             [":w" => strtolower(trim($target))]
@@ -171,7 +180,7 @@ class AnagramsGameController {
             [":u" => $userId, ":w" => strtolower(trim($target))]
         );
 
-        // Store session data
+        // store session data
         $_SESSION['game'] = [
             'id' => $gameId,
             'target' => $target,
@@ -199,64 +208,61 @@ class AnagramsGameController {
 
     /* ---------- Guess handling ---------- */
     private function handleGuess() {
-    if (!isset($_SESSION['game'])) { $this->showWelcome('No active game. Start a new one.'); return; }
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') { $this->showGame(); return; }
+        if (!isset($_SESSION['game'])) { $this->showWelcome('No active game. Start a new one.'); return; }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') { $this->showGame(); return; }
 
-    $guess = trim($_POST['guess'] ?? '');
-    if ($guess === '') { $this->showGame(); return; }
+        $guess = trim($_POST['guess'] ?? '');
+        if ($guess === '') { $this->showGame(); return; }
 
-    $guessLower = strtolower($guess);
-    $targetLower = strtolower($_SESSION['game']['target']);
+        $guessLower = strtolower($guess);
+        $targetLower = strtolower($_SESSION['game']['target']);
 
-    // 1) Letters must come from target
-    if (!$this->lettersAllowed($guessLower, $targetLower)) {
-        $_SESSION['game']['invalid_count']++;
-        $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>false,'reason'=>'disallowed_letters'];
-        $this->showGame(); return;
-    }
+        // letters must come from target
+        if (!$this->lettersAllowed($guessLower, $targetLower)) {
+            $_SESSION['game']['invalid_count']++;
+            $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>false,'reason'=>'disallowed_letters'];
+            $this->showGame(); return;
+        }
 
-    // handle exact 7-letter target FIRST (no bank check needed)
-    if (strlen($guessLower) === 7 && $guessLower === $targetLower) {
-        // Optional: either award no extra points for the 7-letter word, or keep your current 50
-        // $_SESSION['game']['score'] += 0; // if you want 0 points for the final word
+        // handle exact 7-letter target FIRST (no bank check needed)
+        if (strlen($guessLower) === 7 && $guessLower === $targetLower) {
+            $_SESSION['game']['guessed'][] = $guessLower;
+            $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>true,'points'=>0];
+            $_SESSION['game']['won'] = true;
+            $_SESSION['game']['score'] += 50;
 
+            Database::execStmt(
+                "UPDATE hw3_games SET status = 'won', score = :s WHERE id = :id",
+                [":s" => $_SESSION['game']['score'], ":id" => $_SESSION['game']['id']]
+            );
+
+            $this->showGameOver();
+            return;
+        }
+
+        // for shorter words, require presence in the word bank
+        $wordBank = $this->loadWordBank();
+        if (!in_array($guessLower, $wordBank, true)) {
+            $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>false,'reason'=>'not_in_word_bank'];
+            $_SESSION['game']['score'] -= 1;
+            $this->showGame(); return;
+        }
+
+        // duplicate check
+        if (in_array($guessLower, $_SESSION['game']['guessed'], true)) {
+            $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>false,'reason'=>'already_guessed'];
+            $this->showGame(); return;
+        }
+
+        // score & record for short valid words
+        $len = strlen($guessLower);
+        $pts = $this->pointsForLength($len);
+        $_SESSION['game']['score'] += $pts;
         $_SESSION['game']['guessed'][] = $guessLower;
-        $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>true,'points'=>0];
-        $_SESSION['game']['won'] = true;
+        $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>true,'points'=>$pts];
 
-        Database::execStmt(
-            "UPDATE hw3_games SET status = 'won', score = :s WHERE id = :id",
-            [":s" => $_SESSION['game']['score'], ":id" => $_SESSION['game']['id']]
-        );
-
-        $this->showGameOver();
-        return;
-    }
-
-    // 2) For shorter words, require presence in the word bank
-    $wordBank = $this->loadWordBank();
-    if (!in_array($guessLower, $wordBank, true)) {
-        $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>false,'reason'=>'not_in_word_bank'];
-        $_SESSION['game']['score'] -= 1;
-        $this->showGame(); return;
-    }
-
-    // 3) Duplicate check
-    if (in_array($guessLower, $_SESSION['game']['guessed'], true)) {
-        $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>false,'reason'=>'already_guessed'];
-        $this->showGame(); return;
-    }
-
-    // 4) Score & record for short valid words
-    $len = strlen($guessLower);
-    $pts = $this->pointsForLength($len);
-    $_SESSION['game']['score'] += $pts;
-    $_SESSION['game']['guessed'][] = $guessLower;
-    $_SESSION['game']['all_guesses'][] = ['word'=>$guessLower,'valid'=>true,'points'=>$pts];
-
-    $this->showGame();
+        $this->showGame();
 }
-
 
     /* ---------- Helpers ---------- */
     private function loadWords7() {
@@ -313,31 +319,31 @@ class AnagramsGameController {
     }
 
     private function getUserStats($userId) {
-        // Total games played
+        // total games played
         $gamesPlayed = Database::one(
             "SELECT COUNT(*) AS total FROM hw3_games WHERE user_id = :u",
             [":u" => $userId]
         )['total'] ?? 0;
 
-        // Games won
+        // games won
         $gamesWon = Database::one(
             "SELECT COUNT(*) AS won FROM hw3_games WHERE user_id = :u AND status = 'won'",
             [":u" => $userId]
         )['won'] ?? 0;
 
-        // Highest score
+        // highest score
         $highScore = Database::one(
             "SELECT COALESCE(MAX(score), 0) AS max_score FROM hw3_games WHERE user_id = :u",
             [":u" => $userId]
         )['max_score'] ?? 0;
 
-        // Average score
+        // average score
         $avgScore = Database::one(
             "SELECT COALESCE(AVG(score), 0) AS avg_score FROM hw3_games WHERE user_id = :u",
             [":u" => $userId]
         )['avg_score'] ?? 0;
 
-        // Win percentage
+        // win percentage
         $winPct = $gamesPlayed > 0 ? round(($gamesWon / $gamesPlayed) * 100, 1) : 0;
 
         return [
